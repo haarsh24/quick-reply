@@ -45,7 +45,8 @@ export default function App() {
       const data = await generateReplies(message, selectedTone, isShort);
       setResult(data);
     } catch (err: any) {
-      setError(err?.message || "Something went wrong. Please try again.");
+      // We have fallbacks in the service, but if even that fails:
+      setError("Even our emergency backup brain failed 💀 Try again?");
     } finally {
       setLoading(false);
     }
