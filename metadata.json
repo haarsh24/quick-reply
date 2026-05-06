@@ -1,0 +1,6 @@
+{
+  "name": "QuickReply",
+  "description": "Generate natural, human-like text replies for any situation with custom tones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

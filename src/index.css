@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  
+  --color-brand-primary: #000000;
+  --color-brand-secondary: #6366f1;
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+}
+
+@layer base {
+  body {
+    @apply bg-[#FAFAFA] text-zinc-900 antialiased;
+  }
+}
+
+.glass-card {
+  @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+}
+
+.tone-pill {
+  @apply px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border;
+}
+
+.tone-pill-active {
+  @apply bg-zinc-900 border-zinc-900 text-white shadow-md scale-105;
+}
+
+.tone-pill-inactive {
+  @apply bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400;
+}
+
+.reply-card {
+  @apply p-4 rounded-2xl bg-white border border-zinc-100 hover:border-zinc-300 transition-all duration-200 shadow-sm cursor-pointer active:scale-[0.98];
+}
