@@ -1,39 +1,69 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Instrument+Sans:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", sans-serif;
   
-  --color-brand-primary: #000000;
-  --color-brand-secondary: #6366f1;
+  --color-brand-primary: #6366f1;
+  --color-brand-accent: #8b5cf6;
+  --color-bg-deep: #050505;
+  --color-bg-card: #111111;
   
-  --radius-xl: 1rem;
-  --radius-2xl: 1.5rem;
+  --radius-premium: 1.5rem;
 }
 
 @layer base {
   body {
-    @apply bg-[#FAFAFA] text-zinc-900 antialiased;
+    @apply bg-bg-deep text-slate-100 antialiased;
   }
 }
 
-.glass-card {
-  @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+.cred-card {
+  @apply bg-bg-card border border-white/5 rounded-premium transition-all duration-300;
+}
+
+.cred-card-active {
+  @apply border-brand-primary/30 ring-1 ring-brand-primary/20;
 }
 
 .tone-pill {
-  @apply px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border;
+  @apply px-4 py-2.5 rounded-2xl text-[11px] font-bold uppercase tracking-wider transition-all duration-300 border flex items-center gap-2;
 }
 
 .tone-pill-active {
-  @apply bg-zinc-900 border-zinc-900 text-white shadow-md scale-105;
+  @apply bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.1)];
 }
 
 .tone-pill-inactive {
-  @apply bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400;
+  @apply bg-transparent border-white/10 text-white/40 hover:border-white/30 hover:text-white;
 }
 
 .reply-card {
-  @apply p-4 rounded-2xl bg-white border border-zinc-100 hover:border-zinc-300 transition-all duration-200 shadow-sm cursor-pointer active:scale-[0.98];
+  @apply p-6 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 hover:bg-white/[0.07] transition-all duration-300 cursor-pointer active:scale-[0.98] flex items-center justify-between gap-4;
+}
+
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-br from-white to-white/50;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
 }

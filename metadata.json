@@ -1,6 +1,6 @@
 {
-  "name": "QuickReply",
-  "description": "Generate natural, human-like text replies for any situation with custom tones.",
+  "name": "Reply Bro",
+  "description": "Smart, context-aware AI replies for texts, DMs, and emails. Features Rizz mode and image analysis.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

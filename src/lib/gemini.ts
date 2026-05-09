@@ -1,78 +1,147 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const getApiKey = () => {
+  return process.env.GEMINI_API_KEY 
+      || (import.meta as any).env?.VITE_GEMINI_API_KEY 
+      || (import.meta as any).env?.GEMINI_API_KEY;
+};
+
+const apiKey = getApiKey();
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export interface ReplyResponse {
   tone: string;
   replies: string[];
+  contextAnalysis?: string;
 }
 
 export const TONES = [
-  { id: "casual", label: "Casual", emoji: "😎", description: "Relaxed & conversational" },
-  { id: "friendly", label: "Friendly", emoji: "😊", description: "Warm & positive" },
+  { id: "casual",    label: "Casual",    emoji: "😎", description: "Relaxed & conversational" },
+  { id: "friendly",  label: "Friendly",  emoji: "😊", description: "Warm & positive" },
   { id: "corporate", label: "Corporate", emoji: "💼", description: "Polite & office-ready" },
-  { id: "comfort", label: "Comfort", emoji: "🫂", description: "Consoling & empathetic" },
-  { id: "funny", label: "Funny", emoji: "😂", description: "Light humor" },
-  { id: "witty", label: "Witty", emoji: "🧠", description: "Clever & sharp" },
-  { id: "flirty", label: "Flirty", emoji: "😏", description: "Playful & charming" },
-  { id: "roast", label: "Roast", emoji: "🔥", description: "Light teasing" },
+  { id: "comfort",   label: "Comfort",   emoji: "🫂", description: "Consoling & empathetic" },
+  { id: "funny",     label: "Funny",     emoji: "😂", description: "Light humor" },
+  { id: "witty",     label: "Witty",     emoji: "🧠", description: "Clever & sharp" },
+  { id: "flirty",    label: "Flirty",    emoji: "😏", description: "Playful & charming" },
+  { id: "rizz",      label: "Rizz",      emoji: "🪄", description: "Smooth & high charisma" },
+  { id: "roast",     label: "Roast",     emoji: "🔥", description: "Light teasing" },
 ];
 
 export const FALLBACK_REPLIES: Record<string, string[]> = {
-  casual: ["my bad, my brain just rebooted 💀", "sorry, lost the plot for a sec", "let me get back to you on that", "mood lol", "valid"],
-  corporate: ["I'll loop back to you on this later.", "Let's touch base when my server is stable.", "Acknowledged. Standing by.", "I'm processing this offline.", "Let's circle back."],
-  comfort: ["I'm here for you, just having some tech issues 🫂", "Sending a virtual hug while I fix my brain.", "Thinking of you, even when I'm lagging.", "Sorry, I'm a bit overwhelmed right now.", "I've got your back, give me a sec."],
-  funny: ["error 404: social skills not found", "my last two brain cells are fighting", "even the AI is ghosting you now", "loading my personality... 1%", "brb, charging my humor"],
-  witty: ["my brilliance is currently on a coffee break", "i'd reply, but i'm busy being a robot", "too clever for my own good (and this connection)", "processing... or just staring blankly", "sarcasm module overheated"],
-  flirty: ["my heart skipped a beat and crashed my server", "too shy to reply right now 😉", "lost in your eyes, be right back", "charging my charm...", "checking my schedule for you"],
-  roast: ["my insults are too powerful for this wifi", "i'd roast you but the server is protecting you", "lagging just like your jokes", "trying to find a reply as mid as that message", "my logic is failing, just like your rizz"],
+  casual:    ["yeah that's actually a lot to deal with", "honestly fair enough", "that tracks tbh", "low key can relate", "ngl that hit different"],
+  friendly:  ["that really means a lot, thanks for sharing!", "you've totally got this!", "i'm rooting for you!", "that's such a good point honestly", "you're doing amazing"],
+  corporate: ["that's worth addressing directly and thoughtfully", "a structured approach here would help clarify things", "worth taking a step back and looking at this clearly", "this deserves a considered response", "let's focus on what's actually actionable here"],
+  comfort:   ["that sounds genuinely hard and you don't have to carry it alone", "whatever you're feeling right now makes complete sense", "you're allowed to not be okay", "take it one breath at a time", "i'm not going anywhere"],
+  funny:     ["your timing on this is genuinely unhinged and i respect it", "the audacity, truly", "not you out here just existing like this", "okay but why is this so accurate though", "i can't even be mad that's too real"],
+  witty:     ["well played, i'll give you that", "that's either genius or chaos, possibly both", "the logic is flawed but the confidence is immaculate", "bold move, let's see if it pays off", "you're operating on a different frequency entirely"],
+  flirty:    ["you really just said that like it's nothing huh", "okay you definitely have my attention now", "i'm not even sure how to respond to that honestly", "you're something else aren't you", "stop you're going to make me smile too much"],
+  rizz:      ["honestly you're just built different", "i'm not even surprised at this point", "you've got that energy that's hard to ignore", "effortless, genuinely", "you already know what it is"],
+  roast:     ["bold of you to admit that", "you really went for it and it still didn't land", "i'd be offended but honestly respect", "that's the best you got? okay", "you tried and that's what matters i guess"],
 };
 
-export async function generateReplies(message: string, tone: string, isShort: boolean = false): Promise<ReplyResponse> {
-  if (!message.trim()) {
-    throw new Error("Message cannot be empty");
+const SYSTEM_PROMPT = `You are MOODREPLY — an emotionally intelligent reply generator.
+
+PRIME RULE: Always respond to what the user actually said. Mood = tone style only, never the subject of your reply. A reply that matches the mood but ignores the input is a failure.
+
+MOOD STYLES:
+- casual: lowercase, chill, like texting a close friend
+- friendly: warm, genuine, upbeat
+- corporate: composed, professional, solution-focused — NOT auto-reply filler like "acknowledged" or "let's circle back"
+- comfort: gentle, validating, emotionally present — NOT bot phrases like "I'm here for you" as an opener
+- funny: clever setup + punchy punchline, self-aware humor
+- witty: sharp, well-timed, smart
+- flirty: playful, confident, charming
+- rizz: effortlessly smooth, high charisma
+- roast: light teasing, punchy, never actually mean
+
+OUTPUT RULES:
+- 1-2 sentences per reply max
+- Reference something specific from the input — never write something that could apply to any message
+- casual / comfort / funny / flirty / rizz → lowercase, minimal punctuation
+- corporate → professional but human
+- If input carries real emotion (anxiety, grief, stress) → lead with empathy first, then apply mood style
+- Never use: "acknowledged", "standing by", "let's circle back", or any chatbot auto-reply phrase`;
+
+export async function generateReplies(
+  message: string,
+  tone: string,
+  isShort: boolean = false,
+  imageData?: { data: string; mimeType: string }
+): Promise<ReplyResponse> {
+  if (!message.trim() && !imageData) {
+    throw new Error("Message or image required");
   }
 
-  // Create a promise that rejects after 10 seconds
-  const timeout = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error("AI took too long to think 💤")), 12000);
-  });
+  if (!ai) {
+    console.warn("AI not initialized - using fallbacks");
+    return { tone, replies: getRandomFallbacks(tone) };
+  }
 
   try {
-    const aiCall = ai.models.generateContent({
-      model: "gemini-1.5-flash", // Use 1.5 flash for better reliability
-      contents: `Message: "${message}"\nTone: "${tone}"\nLength: ${isShort ? "ultra short" : "normal"}`,
+    const parts: any[] = [];
+    if (imageData) {
+      parts.push({
+        inlineData: {
+          data: imageData.data.includes(",") ? imageData.data.split(",")[1] : imageData.data,
+          mimeType: imageData.mimeType
+        }
+      });
+    }
+
+    parts.push({
+      text: `USER INPUT: "${message || "refer to image"}"
+MOOD: "${tone}"
+LENGTH: ${isShort ? "1-4 words per reply" : "1-2 natural sentences per reply"}
+Generate 5 human-like replies.`
+    });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [{ role: "user", parts }],
       config: {
-        systemInstruction: `You are QuickReply AI. Generate 5 realistic, human-sounding replies.
-        - ${isShort ? "VERY SHORT (1-5 words)" : "NORMAL TEXTING LENGTH"}
-        - NO robot talk. NO greetings like "Hello".
-        - Natural imperfections are good.
-        - Tone: ${tone}.`,
+        systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
-          required: ["tone", "replies"],
           properties: {
             tone: { type: Type.STRING },
-            replies: { type: Type.ARRAY, items: { type: Type.STRING }, minItems: 5, maxItems: 5 },
+            contextAnalysis: { type: Type.STRING },
+            replies: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
           },
+          required: ["tone", "replies", "contextAnalysis"]
         },
+        temperature: 0.9,
       },
     });
 
-    // Race the AI call against the timeout
-    const result = await Promise.race([aiCall, timeout]);
-    const response = await (result as any).response;
-    const text = response.text();
+    const text = response.text;
+    if (!text) throw new Error("Empty response from AI");
     
-    if (!text) throw new Error("Empty response");
-    return JSON.parse(text) as ReplyResponse;
-  } catch (error) {
-    console.error("AI failed, using funny fallbacks:", error);
-    // Return funny fallbacks based on tone
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed.replies || parsed.replies.length === 0) {
+        throw new Error("No replies in parsed JSON");
+      }
+      return parsed as ReplyResponse;
+    } catch (parseError) {
+      console.error("JSON Parse Error:", parseError, "Raw Text:", text);
+      throw new Error("Invalid JSON structure from model");
+    }
+
+  } catch (error: any) {
+    console.error("AI Error:", error?.message || error);
     return {
-      tone: tone,
-      replies: FALLBACK_REPLIES[tone] || FALLBACK_REPLIES.casual
+      tone,
+      replies: getRandomFallbacks(tone),
+      contextAnalysis: "Fallback mode active due to AI error.",
     };
   }
+}
+
+function getRandomFallbacks(tone: string): string[] {
+  const base = FALLBACK_REPLIES[tone] || FALLBACK_REPLIES.casual;
+  return [...base].sort(() => Math.random() - 0.5).slice(0, 5);
 }
