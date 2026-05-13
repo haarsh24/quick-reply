@@ -279,7 +279,7 @@ export default function App() {
           <div className="flex items-center gap-1.5 hover:text-white transition-colors cursor-default">
             <span>Made with precision by</span>
             <a 
-              href="https://github.com/haarsh24" 
+              href="https://www.kumarharsh.in" 
               target="_blank" 
               rel="noopener noreferrer"
               className="font-bold text-white hover:text-brand-primary transition-colors underline decoration-brand-primary/30 underline-offset-4"
