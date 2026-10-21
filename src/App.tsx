@@ -87,7 +87,7 @@ export default function App() {
       ]);
       setResult(data);
     } catch (err: any) {
-      setError("Even Reply Bro hit a wall. Maybe your rizz is too high for the server? Try again.");
+      setError(err?.message || "Failed to generate replies. Please try again.");
     } finally {
       clearInterval(messageInterval);
       setLoading(false);

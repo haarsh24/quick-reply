@@ -2,5 +2,7 @@
   "name": "Reply Bro",
   "description": "Smart, context-aware AI replies for texts, DMs, and emails. Features Rizz mode and image analysis.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -1,14 +1,3 @@
-import { GoogleGenAI, Type } from "@google/genai";
-
-const getApiKey = () => {
-  return process.env.GEMINI_API_KEY 
-      || (import.meta as any).env?.VITE_GEMINI_API_KEY 
-      || (import.meta as any).env?.GEMINI_API_KEY;
-};
-
-const apiKey = getApiKey();
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
-
 export interface ReplyResponse {
   tone: string;
   replies: string[];
@@ -39,29 +28,6 @@ export const FALLBACK_REPLIES: Record<string, string[]> = {
   roast:     ["bold of you to admit that", "you really went for it and it still didn't land", "i'd be offended but honestly respect", "that's the best you got? okay", "you tried and that's what matters i guess"],
 };
 
-const SYSTEM_PROMPT = `You are MOODREPLY — an emotionally intelligent reply generator.
-
-PRIME RULE: Always respond to what the user actually said. Mood = tone style only, never the subject of your reply. A reply that matches the mood but ignores the input is a failure.
-
-MOOD STYLES:
-- casual: actual texting energy, not performed casualness. lowercase, zero effort.
-- friendly: warm and genuine, not over the top. cheerful without the exclamation marks.
-- corporate: sharp colleague in a 1:1, not a support bot. plain words, short sentences. no "I appreciate you being direct" / "let's pivot" / "I'm committed to".
-- comfort: close friend who listens, not a therapist on script. soft and specific. no "I'm here for you" openers.
-- funny: perfectly timed comeback. clever setup, punchy close. never explain the joke.
-- witty: dry and effortless. one sharp observation beats three clever lines.
-- flirty: confident and playful, not thirsty. light touch.
-- rizz: smooth and accidental-looking. short, zero desperation.
-- roast: specific to what they said, never generic. funny enough they laugh at themselves.
-
-OUTPUT RULES:
-- 1-2 sentences per reply max
-- Reference something specific from the input — never write something that could apply to any message
-- casual / comfort / funny / flirty / rizz → lowercase, minimal punctuation
-- corporate → professional but human
-- If input carries real emotion (anxiety, grief, stress) → lead with empathy first, then apply mood style
-- Never use: "acknowledged", "standing by", "let's circle back", or any chatbot auto-reply phrase`;
-
 export async function generateReplies(
   message: string,
   tone: string,
@@ -69,76 +35,35 @@ export async function generateReplies(
   imageData?: { data: string; mimeType: string }
 ): Promise<ReplyResponse> {
   if (!message.trim() && !imageData) {
-    throw new Error("Message or image required");
+    throw new Error("Message or screenshot is required to generate replies.");
   }
 
-  if (!ai) {
-    console.warn("AI not initialized - using fallbacks");
-    return { tone, replies: getRandomFallbacks(tone) };
-  }
+  const res = await fetch("/api/generate-replies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, tone, isShort, imageData }),
+  });
 
-  try {
-    const parts: any[] = [];
-    if (imageData) {
-      parts.push({
-        inlineData: {
-          data: imageData.data.includes(",") ? imageData.data.split(",")[1] : imageData.data,
-          mimeType: imageData.mimeType
-        }
-      });
-    }
-
-    parts.push({
-      text: `USER INPUT: "${message || "refer to image"}"
-MOOD: "${tone}"
-LENGTH: ${isShort ? "1-4 words per reply" : "1-2 natural sentences per reply"}
-Generate 5 human-like replies.`
-    });
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ role: "user", parts }],
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            tone: { type: Type.STRING },
-            contextAnalysis: { type: Type.STRING },
-            replies: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            }
-          },
-          required: ["tone", "replies", "contextAnalysis"]
-        },
-        temperature: 0.9,
-      },
-    });
-
-    const text = response.text;
-    if (!text) throw new Error("Empty response from AI");
-    
-    try {
-      const parsed = JSON.parse(text);
-      if (!parsed.replies || parsed.replies.length === 0) {
-        throw new Error("No replies in parsed JSON");
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const rawError = errData.error || `Server responded with status ${res.status}`;
+    if (typeof rawError === "string") {
+      if (rawError.includes("API key not valid") || rawError.includes("API_KEY_INVALID")) {
+        throw new Error("Gemini API key is invalid or expired. Please update your API key in the Settings > Secrets panel.");
       }
-      return parsed as ReplyResponse;
-    } catch (parseError) {
-      console.error("JSON Parse Error:", parseError, "Raw Text:", text);
-      throw new Error("Invalid JSON structure from model");
+      if (rawError.includes("not configured")) {
+        throw new Error("GEMINI_API_KEY is not configured. Please add your API key in the Settings > Secrets panel.");
+      }
     }
-
-  } catch (error: any) {
-    console.error("AI Error:", error?.message || error);
-    return {
-      tone,
-      replies: getRandomFallbacks(tone),
-      contextAnalysis: "Fallback mode active due to AI error.",
-    };
+    throw new Error(typeof rawError === "string" ? rawError : JSON.stringify(rawError));
   }
+
+  const data = await res.json();
+  if (!data.replies || !Array.isArray(data.replies) || data.replies.length === 0) {
+    throw new Error("Model did not return any replies. Please try again.");
+  }
+
+  return data as ReplyResponse;
 }
 
 function getRandomFallbacks(tone: string): string[] {
