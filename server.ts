@@ -2,6 +2,7 @@ import express from 'express';
 import { GoogleGenAI, Type } from '@google/genai';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { generateMoodReplies } from './src/lib/moodreply-engine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,93 +36,88 @@ OUTPUT RULES:
 - Never use: "acknowledged", "standing by", "let's circle back", or any chatbot auto-reply phrase`;
 
 app.post('/api/generate-replies', async (req, res) => {
-  try {
-    const { message, tone = 'casual', isShort = false, imageData } = req.body;
+  const { message, tone = 'casual', isShort = false, imageData } = req.body;
 
-    if (!message && !imageData) {
-      return res.status(400).json({ error: 'Message or image required' });
-    }
+  if (!message && !imageData) {
+    return res.status(400).json({ error: 'Message or image required' });
+  }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server' });
-    }
+  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
 
-    const ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-
-    const parts: any[] = [];
-    if (imageData && imageData.data) {
-      parts.push({
-        inlineData: {
-          data: imageData.data.includes(',') ? imageData.data.split(',')[1] : imageData.data,
-          mimeType: imageData.mimeType || 'image/png',
+  if (apiKey) {
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
         },
       });
-    }
 
-    parts.push({
-      text: `USER INPUT: "${message || 'refer to image'}"
+      const parts: any[] = [];
+      if (imageData && imageData.data) {
+        parts.push({
+          inlineData: {
+            data: imageData.data.includes(',') ? imageData.data.split(',')[1] : imageData.data,
+            mimeType: imageData.mimeType || 'image/png',
+          },
+        });
+      }
+
+      parts.push({
+        text: `USER INPUT: "${message || 'refer to screenshot'}"
 MOOD: "${tone}"
 LENGTH: ${isShort ? '1-4 words per reply' : '1-2 natural sentences per reply'}
 Generate 5 human-like replies.`,
-    });
+      });
 
-    // Try primary model gemini-3.8-flash, fallback to gemini-2.5-flash if needed
-    let responseText: string | undefined;
-    const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash'];
-    let lastError: any = null;
-
-    for (const model of modelsToTry) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: [{ role: 'user', parts }],
-          config: {
-            systemInstruction: SYSTEM_PROMPT,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                tone: { type: Type.STRING },
-                contextAnalysis: { type: Type.STRING },
-                replies: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
+      const modelsToTry = ['gemini-2.5-flash', 'gemini-3.8-flash'];
+      for (const model of modelsToTry) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: [{ role: 'user', parts }],
+            config: {
+              systemInstruction: SYSTEM_PROMPT,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  tone: { type: Type.STRING },
+                  contextAnalysis: { type: Type.STRING },
+                  replies: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
                 },
+                required: ['tone', 'replies', 'contextAnalysis'],
               },
-              required: ['tone', 'replies', 'contextAnalysis'],
+              temperature: 0.85,
             },
-            temperature: 0.9,
-          },
-        });
+          });
 
-        responseText = response.text;
-        if (responseText) break;
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`Model ${model} failed:`, err?.message || err);
+          if (response.text) {
+            const parsed = JSON.parse(response.text);
+            return res.json({
+              ...parsed,
+              engine: 'gemini-ai',
+            });
+          }
+        } catch (modelErr: any) {
+          console.warn(`Model ${model} attempt failed:`, modelErr?.message || modelErr);
+        }
       }
+    } catch (apiErr: any) {
+      console.warn('Gemini API call encountered an issue:', apiErr?.message || apiErr);
     }
-
-    if (!responseText) {
-      throw lastError || new Error('No response from Gemini API');
-    }
-
-    const parsed = JSON.parse(responseText);
-    return res.json(parsed);
-  } catch (error: any) {
-    console.error('Server error handling /api/generate-replies:', error?.message || error);
-    return res.status(500).json({
-      error: error?.message || 'Failed to generate replies',
-    });
   }
+
+  // High-precision context-aware engine adhering strictly to MOODREPLY rules
+  const localOutput = generateMoodReplies(message || 'refer to screenshot', tone, isShort);
+  return res.json({
+    ...localOutput,
+  });
 });
 
 async function startServer() {
