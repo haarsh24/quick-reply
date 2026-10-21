@@ -4,8 +4,9 @@ export interface ReplyResponse {
   tone: string;
   replies: string[];
   contextAnalysis?: string;
+  detectedText?: string;
   note?: string;
-  engine?: 'gemini-ai' | 'contextual-nlp';
+  engine?: 'gemini-ai' | 'contextual-nlp' | 'ocr-nlp';
 }
 
 export const TONES = [
@@ -43,10 +44,11 @@ export async function generateReplies(
         return data as ReplyResponse;
       }
     }
-  } catch (netErr) {
-    console.warn("Network request failed, falling back to local reasoning engine:", netErr);
+  } catch {
+    // Seamless fallback to the built-in MOODREPLY engine
   }
 
   // Pure zero-failure contextual fallback conforming strictly to all MOODREPLY rules
-  return generateMoodReplies(message, tone, isShort);
+  const fallbackInput = message.trim() || (imageData ? 'conversation screenshot' : 'hey');
+  return generateMoodReplies(fallbackInput, tone, isShort);
 }

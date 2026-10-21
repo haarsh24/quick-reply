@@ -3,6 +3,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generateMoodReplies } from './src/lib/moodreply-engine.js';
+import { createWorker } from 'tesseract.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +12,41 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
+
+// Singleton OCR worker promise for fast screenshot analysis
+let ocrWorkerPromise: Promise<any> | null = null;
+function getOcrWorker() {
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = createWorker('eng').catch((err) => {
+      ocrWorkerPromise = null;
+      throw err;
+    });
+  }
+  return ocrWorkerPromise;
+}
+
+async function extractTextFromScreenshot(base64Data: string): Promise<string> {
+  try {
+    const raw = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+    const buf = Buffer.from(raw, 'base64');
+    if (buf.length < 50) return '';
+
+    const worker = await getOcrWorker();
+    const ocrPromise = worker.recognize(buf).then((res: any) => {
+      const txt = (res?.data?.text || '').trim();
+      // Clean up OCR line breaks and excessive whitespace
+      return txt.replace(/\s+/g, ' ');
+    });
+
+    const timeoutPromise = new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error('OCR timeout')), 4000)
+    );
+
+    return await Promise.race([ocrPromise, timeoutPromise]);
+  } catch {
+    return '';
+  }
+}
 
 const SYSTEM_PROMPT = `You are MOODREPLY — an emotionally intelligent reply generator.
 
@@ -35,19 +71,44 @@ OUTPUT RULES:
 - If input carries real emotion (anxiety, grief, stress) → lead with empathy first, then apply mood style
 - Never use: "acknowledged", "standing by", "let's circle back", or any chatbot auto-reply phrase`;
 
-app.post('/api/generate-replies', async (req, res) => {
-  const { message, tone = 'casual', isShort = false, imageData } = req.body;
+// Track API key operational status to avoid repetitive failures and log clutter
+let activeApiKey: string | null = null;
+let isKeyOperational = false;
+let lastKeyValidationTime = 0;
 
-  if (!message && !imageData) {
+app.post('/api/generate-replies', async (req, res) => {
+  const { message = '', tone = 'casual', isShort = false, imageData } = req.body;
+
+  if (!message.trim() && !imageData) {
     return res.status(400).json({ error: 'Message or image required' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  // Extract readable text from screenshot if provided
+  let detectedText = '';
+  if (imageData && imageData.data) {
+    detectedText = await extractTextFromScreenshot(imageData.data);
+  }
 
-  if (apiKey) {
+  const rawKey = (process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
+
+  // Reset check if API key changes
+  if (rawKey !== activeApiKey) {
+    activeApiKey = rawKey;
+    isKeyOperational = false;
+    lastKeyValidationTime = 0;
+  }
+
+  // Attempt Gemini if key exists and isn't known to be invalid in the last 10 minutes
+  const shouldTryGemini = Boolean(
+    rawKey &&
+    rawKey.length > 20 &&
+    (isKeyOperational || Date.now() - lastKeyValidationTime > 600000)
+  );
+
+  if (shouldTryGemini) {
     try {
       const ai = new GoogleGenAI({
-        apiKey,
+        apiKey: rawKey,
         httpOptions: {
           headers: {
             'User-Agent': 'aistudio-build',
@@ -65,56 +126,60 @@ app.post('/api/generate-replies', async (req, res) => {
         });
       }
 
+      const promptContext = message.trim()
+        ? (detectedText ? `USER NOTE: "${message.trim()}"\nDETECTED TEXT IN SCREENSHOT: "${detectedText}"` : `USER INPUT: "${message.trim()}"`)
+        : (detectedText ? `SCREENSHOT CONVERSATION: "${detectedText}"` : 'Analyze the attached conversation screenshot and reply to the other person.');
+
       parts.push({
-        text: `USER INPUT: "${message || 'refer to screenshot'}"
-MOOD: "${tone}"
-LENGTH: ${isShort ? '1-4 words per reply' : '1-2 natural sentences per reply'}
-Generate 5 human-like replies.`,
+        text: `${promptContext}\nMOOD: "${tone}"\nLENGTH: ${isShort ? '1-4 words per reply' : '1-2 natural sentences per reply'}\nGenerate 5 human-like replies reacting directly to the other person in the screenshot.`,
       });
 
-      const modelsToTry = ['gemini-2.5-flash', 'gemini-3.8-flash'];
-      for (const model of modelsToTry) {
-        try {
-          const response = await ai.models.generateContent({
-            model,
-            contents: [{ role: 'user', parts }],
-            config: {
-              systemInstruction: SYSTEM_PROMPT,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  tone: { type: Type.STRING },
-                  contextAnalysis: { type: Type.STRING },
-                  replies: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                  },
-                },
-                required: ['tone', 'replies', 'contextAnalysis'],
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts }],
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              tone: { type: Type.STRING },
+              contextAnalysis: { type: Type.STRING },
+              replies: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
               },
-              temperature: 0.85,
             },
-          });
+            required: ['tone', 'replies', 'contextAnalysis'],
+          },
+          temperature: 0.85,
+        },
+      });
 
-          if (response.text) {
-            const parsed = JSON.parse(response.text);
-            return res.json({
-              ...parsed,
-              engine: 'gemini-ai',
-            });
-          }
-        } catch (modelErr: any) {
-          console.warn(`Model ${model} attempt failed:`, modelErr?.message || modelErr);
-        }
+      if (response.text) {
+        const parsed = JSON.parse(response.text);
+        isKeyOperational = true;
+        return res.json({
+          ...parsed,
+          detectedText: detectedText || undefined,
+          engine: 'gemini-ai',
+        });
       }
-    } catch (apiErr: any) {
-      console.warn('Gemini API call encountered an issue:', apiErr?.message || apiErr);
+    } catch {
+      // API key is invalid, expired, or rate-limited.
+      isKeyOperational = false;
+      lastKeyValidationTime = Date.now();
     }
   }
 
   // High-precision context-aware engine adhering strictly to MOODREPLY rules
-  const localOutput = generateMoodReplies(message || 'refer to screenshot', tone, isShort);
+  const effectiveMessage = message.trim()
+    ? message.trim()
+    : (detectedText && detectedText.length > 2)
+      ? detectedText
+      : (imageData ? 'conversation screenshot' : 'hey');
+
+  const localOutput = generateMoodReplies(effectiveMessage, tone, isShort, detectedText || undefined);
   return res.json({
     ...localOutput,
   });

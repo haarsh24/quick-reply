@@ -37,6 +37,20 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleClearText = () => {
+    setMessage("");
+    setResult(null);
+    setError(null);
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setMessage(val);
+    if (!val.trim() && !image) {
+      setResult(null);
+    }
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -44,6 +58,9 @@ export default function App() {
         setError("Image must be under 4MB, bro.");
         return;
       }
+      // Instantly wipe old answers when attaching a new image
+      setResult(null);
+      setError(null);
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = (reader.result as string).split(",")[1];
@@ -57,6 +74,8 @@ export default function App() {
   const clearImage = () => {
     setImage(null);
     setImageMimeType(null);
+    setResult(null);
+    setError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -66,8 +85,11 @@ export default function App() {
       return;
     }
     
+    // Wipe previous result immediately so old answers are never displayed during/after generation
+    setResult(null);
     setLoading(true);
-    setLoadingMessage(LOADING_MESSAGES[0]);
+    const initialLoadingMsg = image && !message.trim() ? "ANALYZING SCREENSHOT..." : LOADING_MESSAGES[0];
+    setLoadingMessage(initialLoadingMsg);
     setError(null);
     
     // Cycle through messages to show progress
@@ -80,10 +102,9 @@ export default function App() {
 
     try {
       const imageData = image && imageMimeType ? { data: image, mimeType: imageMimeType } : undefined;
-      // Ensure it takes at least 2.5 seconds for "quality feel"
       const [data] = await Promise.all([
         generateReplies(message, selectedTone, isShort, imageData),
-        new Promise(resolve => setTimeout(resolve, 2500))
+        new Promise(resolve => setTimeout(resolve, 600))
       ]);
       setResult(data);
     } catch (err: any) {
@@ -129,21 +150,33 @@ export default function App() {
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">1. Define Context</h2>
-                  <button 
-                    onClick={() => setIsShort(!isShort)}
-                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all duration-500 border ${
-                      isShort ? 'bg-white text-black border-white' : 'border-white/10 text-white/30'
-                    }`}
-                  >
-                    Short Mode {isShort ? 'ON' : 'OFF'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {message.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearText}
+                        className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                        title="Clear message text"
+                      >
+                        Clear Text
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setIsShort(!isShort)}
+                      className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all duration-500 border ${
+                        isShort ? 'bg-white text-black border-white' : 'border-white/10 text-white/30'
+                      }`}
+                    >
+                      Short Mode {isShort ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
                 </div>
                 
                 <textarea
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Paste the message context here..."
-                  className="w-full min-h-[160px] p-0 text-xl md:text-2xl font-medium bg-transparent border-none focus:ring-0 resize-none outline-none placeholder:text-white/10"
+                  onChange={handleTextChange}
+                  placeholder="Paste the message context or attach a screenshot below..."
+                  className="w-full min-h-[140px] p-0 text-xl md:text-2xl font-medium bg-transparent border-none focus:ring-0 resize-none outline-none placeholder:text-white/10"
                 />
 
                 {/* Integrated Upload Area */}
@@ -158,10 +191,20 @@ export default function App() {
                       <span className="text-[10px] font-black uppercase tracking-widest">Attach Screenshot</span>
                     </button>
                   ) : (
-                    <div className="relative group rounded-xl overflow-hidden border border-white/10 inline-block">
-                      <img src={`data:${imageMimeType};base64,${image}`} className="h-20 w-auto opacity-50 group-hover:opacity-100 transition-opacity" alt="Preview" />
-                      <button onClick={clearImage} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                        <X className="w-4 h-4 text-white" />
+                    <div className="flex items-center gap-3 p-2.5 rounded-xl border border-white/15 bg-white/5 inline-flex">
+                      <div className="relative rounded-lg overflow-hidden border border-white/10 shrink-0">
+                        <img src={`data:${imageMimeType};base64,${image}`} className="h-14 w-auto object-cover max-w-[120px]" alt="Preview" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Screenshot Attached</span>
+                        <span className="text-[10px] text-white/40">Ready to analyze conversation</span>
+                      </div>
+                      <button 
+                        onClick={clearImage} 
+                        className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors ml-2"
+                        title="Remove screenshot"
+                      >
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                   )}
@@ -220,6 +263,16 @@ export default function App() {
               exit={{ opacity: 0, y: -30 }}
               className="flex flex-col gap-6"
             >
+              {result.detectedText && (
+                <div className="cred-card p-4 border-emerald-500/20 bg-emerald-500/5 flex items-center gap-3">
+                  <ImageIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Detected in Screenshot</span>
+                    <p className="text-xs text-white/80 truncate font-mono mt-0.5">"{result.detectedText}"</p>
+                  </div>
+                </div>
+              )}
+
               {result.contextAnalysis && (
                 <div className="cred-card p-6 border-white/10 bg-gradient-to-br from-brand-primary/10 to-transparent">
                   <div className="flex items-start gap-4">

@@ -2,7 +2,8 @@ export interface ReplyOutput {
   tone: string;
   contextAnalysis: string;
   replies: string[];
-  engine?: 'gemini-ai' | 'contextual-nlp';
+  detectedText?: string;
+  engine?: 'gemini-ai' | 'contextual-nlp' | 'ocr-nlp';
 }
 
 interface EmotionPattern {
@@ -19,6 +20,7 @@ function cleanInput(text: string): string {
 function extractKeySubject(text: string): string {
   const lower = text.toLowerCase();
   
+  if (lower.includes('screenshot') || lower.includes('chat') || lower.includes('dm') || lower.includes('text') || lower.includes('convo') || lower.includes('picture') || lower.includes('image')) return 'the conversation';
   if (lower.includes('anxious') || lower.includes('anxiety') || lower.includes('panic')) return 'anxiety';
   if (lower.includes('stress') || lower.includes('stressed') || lower.includes('overwhelm')) return 'stress';
   if (lower.includes('job') || lower.includes('interview') || lower.includes('offer')) return 'the job';
@@ -920,6 +922,136 @@ const PATTERNS: EmotionPattern[] = [
         "yay! let me know the details and i'll be there!"
       ],
     }
+  },
+  // 9. Screenshot / Conversation / Chat Context
+  {
+    name: 'screenshot',
+    keywords: /\b(screenshot|chat|conversation|dm|message|imessage|whatsapp|dating|tinder|hinge|replying to|convo|photo|picture)\b/i,
+    contextReading: (subject, raw) => `Analyzing the chat screenshot: assessing the subtext and providing high-leverage replies to keep conversational momentum.`,
+    replies: {
+      casual: (subject, raw, isShort) => isShort ? [
+        "wait that's wild",
+        "honestly felt that",
+        "no way they said that",
+        "not even surprised",
+        "left you with no words",
+        "classic text energy",
+        "what do you even say",
+        "actually so real"
+      ] : [
+        "honestly wasn't expecting them to say that, but here we are",
+        "the way they typed that out with a straight face is sending me",
+        "they definitely overthought that message before hitting send",
+        "keeping it low-key is the right move here, don't give them too much to work with",
+        "the energy in this chat is definitely interesting — match it without trying too hard",
+        "that's such a specific thing for them to say, curious what they're actually looking for"
+      ],
+      friendly: (subject, raw, isShort) => isShort ? [
+        "that's so nice!",
+        "love this energy!",
+        "such a sweet reply!",
+        "keeping it warm!",
+        "definitely reply back!",
+        "super approachable!"
+      ] : [
+        "that's such a lovely message, definitely worth sending a warm note back!",
+        "they seem really genuine here — love that kind of straightforward energy!",
+        "super easy to keep this conversation going positively from here!",
+        "this is great! a cheerful, supportive reply will keep things moving smoothly",
+        "really nice tone from them. definitely reciprocate that good vibe!"
+      ],
+      corporate: (subject, raw, isShort) => isShort ? [
+        "received with thanks",
+        "clear next steps",
+        "aligning on timeline",
+        "proceeding as discussed",
+        "looping in shortly"
+      ] : [
+        "thank you for sharing the context. let's confirm the next steps and timeline",
+        "understood. i'll review the key points and follow up with a concise response",
+        "makes sense — maintaining clarity and alignment here will keep everything on schedule",
+        "appreciate the update. let's keep communication direct and action-oriented",
+        "noted. i'll acknowledge the points raised and outline the agreed deliverables"
+      ],
+      comfort: (subject, raw, isShort) => isShort ? [
+        "don't overthink this",
+        "you're completely fine",
+        "take a breath first",
+        "here with you",
+        "no pressure at all"
+      ] : [
+        "you don't have to stress over how to answer this, just be yourself",
+        "that kind of message can feel overwhelming, but you're handling it just fine",
+        "take your time before texting back — there is zero rush to reply immediately",
+        "whatever they meant by that, don't let it sit heavy on you",
+        "step back for a second if you need to. your peace of mind comes first"
+      ],
+      funny: (subject, raw, isShort) => isShort ? [
+        "call the fbi",
+        "audacity levels peak",
+        "typing bubble panic",
+        "award for confusion",
+        "unhinged behavior"
+      ] : [
+        "the audacity in this screenshot should honestly be studied in universities",
+        "did they write this with their eyes closed or did they genuinely think that was smooth?",
+        "we need a team of historians to decipher the hidden motives in this text",
+        "if you look up 'mixed signals' in the dictionary, this exact screenshot appears",
+        "my favorite part is where they typed all that out and thought 'yes, this is the one'"
+      ],
+      witty: (subject, raw, isShort) => isShort ? [
+        "subtext doing gymnastics",
+        "masterclass in dodging",
+        "fascinating psychological play",
+        "tactical ambiguity",
+        "checkmate response"
+      ] : [
+        "the subtext in this conversation is doing more heavy lifting than an Olympic athlete",
+        "they gave you just enough ambiguity to keep you guessing. well played on their part",
+        "responding with complete indifference here is statistically your highest percentage play",
+        "it's an interesting strategy: acting like you care while simultaneously saying nothing",
+        "a masterclass in tactical silence versus strategic engagement"
+      ],
+      flirty: (subject, raw, isShort) => isShort ? [
+        "they definitely like you",
+        "the tension is real",
+        "match the banter",
+        "flustered for sure",
+        "give them a hint"
+      ] : [
+        "okay but they're definitely flirting with you, don't even try to pretend they aren't",
+        "the chemistry is practically leaking through the screen right now",
+        "give them just enough of a teaser to make them eagerly wait for your next text",
+        "you're living rent-free in their head after that message, use it to your advantage",
+        "time to hit them with something effortlessly charming that leaves them smiling"
+      ],
+      rizz: (subject, raw, isShort) => isShort ? [
+        "too easy honestly",
+        "keep them guessing",
+        "unbothered energy",
+        "ball is in your court",
+        "effortless control"
+      ] : [
+        "keep it short and effortless. let them do the chasing from here",
+        "you don't need a paragraph when three words will have them re-reading the text five times",
+        "pure unbothered confidence wins this exchange every single time",
+        "leave just enough mystery so they're already thinking about the next text",
+        "the move here is smooth, direct, and completely free of desperation"
+      ],
+      roast: (subject, raw, isShort) => isShort ? [
+        "zero game detected",
+        "left on read worthy",
+        "why did they send that",
+        "dry texting champion",
+        "delete the contact"
+      ] : [
+        "whoever sent this needs their texting privileges revoked immediately",
+        "that message was drier than a Popeyes biscuit without a drink",
+        "if they spent half as much time being interesting as they did typing that out, you'd actually care",
+        "the secondhand embarrassment from reading this screenshot is off the charts",
+        "tell me they didn't actually hit send on that thinking they did something"
+      ]
+    }
   }
 ];
 
@@ -1049,10 +1181,21 @@ const DEFAULT_PATTERN: EmotionPattern = {
   }
 };
 
+function pickReplies(list: string[], count: number = 5): string[] {
+  if (list.length <= count) return list;
+  const copy = [...list];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+}
+
 export function generateMoodReplies(
   rawInput: string,
   tone: string = 'casual',
-  isShort: boolean = false
+  isShort: boolean = false,
+  detectedText?: string
 ): ReplyOutput {
   const message = cleanInput(rawInput);
   const subject = extractKeySubject(message);
@@ -1074,7 +1217,8 @@ export function generateMoodReplies(
   return {
     tone: normalizedTone,
     contextAnalysis,
-    replies: replies.slice(0, 5),
-    engine: 'contextual-nlp'
+    replies: pickReplies(replies, 5),
+    detectedText,
+    engine: detectedText ? 'ocr-nlp' : 'contextual-nlp'
   };
 }
